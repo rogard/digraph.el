@@ -1,0 +1,937 @@
+#+title: digraphel
+#author: Erwann Rogard
+#+property: header-args:elisp :lexical t
+
+This is a directed graph package written in Emacs-Lisp.
+
+* el
+** lexical
+
+#+header: :noweb-ref el-lexical
+#+begin_src emacs-lisp
+    ;; -*- lexical-binding: t; -*-
+#+end_src
+
+** header
+
+#+header: :noweb-ref el-license
+#+begin_src emacs-lisp
+  ;; Author: Erwann Rogard
+  ;; License: GPL 3.0 (https://www.gnu.org/licenses/gpl-3.0.en.html)
+#+end_src
+
+#+header: :noweb-ref el-terminology
+#+begin_src emacs-lisp
+;; A DIGRAPH consists of VERTICES and ARROWS, each of the form (TAIL, HEAD), where
+;; HEAD and TAIL are members of VERTICES. In symbolic terms, G = (V, A). The number
+;; of ARROWS pointing to a vertex is called its INDEGREE. The LEVEL of a vertex is
+;; the length of the longest sequence of ARROWS from any vertex with indegree 0
+;; (a source) to that vertex.
+;; Reference: https://en.wikipedia.org/wiki/Directed_graph
+#+end_src
+
+** backend
+:PROPERTIES:
+:header-args: :tangle ./digraph.el :emacs-lisp :lexical t
+:END:
+
+*** header
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;; G is represented as a hash-table, where KEY=TAIL and VALUE='(HEAD...). The
+  ;; special case VALUE=nil corresponds to an isolated VERTEX.
+  ;;
+  ;; PROPAGATE is a plist of keyword arguments passed downstream.
+#+end_src
+
+*** adapt
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  (cl-defmacro digraphel-backend-adapt
+      (&key
+       adaptee-suffix
+       target-infix
+       (target-suffix adaptee-suffix)
+       key-map
+       &allow-other-keys
+       &aux
+       (__adaptee (intern (string-join (list "digraphel-backend" adaptee-suffix) "-")))
+       (__target (intern
+                  (string-join
+                   (delq nil (list "digraphel" target-infix target-suffix))
+                   "-")))
+       (__example `(digraphel-backend-adapt
+  		   :adaptee-suffix ,adaptee-suffix
+  		   :target-suffix ,target-suffix
+  		   :key-map ',key-map))
+       (__docstring
+        (format
+         "Adapt %s to a target function using key-map %S.\n\nExample:\n  %S"
+         __adaptee
+         key-map
+         __example)))
+       (message "DEBUG: %S\n"
+  	      __adaptee
+  	      __target)
+       `(cl-defun ,__target
+  	  (&rest rest
+  		 &allow-other-keys
+  		 &aux (__key-map ,key-map)
+  		 (__args (cl-loop for (k v) on rest by #'cddr
+  				  append (list (or (plist-get __key-map k) k) v))))
+  	,__docstring
+  	(message "DEBUG: %S %S" __key-map __args)
+  	(apply #',__adaptee __args)))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-adapt
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (digraphel-backend-adapt
+   :adaptee-suffix "value-as-string"
+   :target-suffix "vertex-as-string"
+   :key-map '(:vertex :value))
+#+end_src
+
+#+RESULTS:
+: digraphel-vertex-as-string
+
+#+begin_src emacs-lisp
+  (digraphel-vertex-as-string :vertex "X")
+#+end_src
+
+#+RESULTS:
+: X
+
+*** vertex
+**** as-string
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-vertex-as-string
+      (&key vertex (string "%s") &allow-other-keys)
+    "Convert VERTEX into a string using STRING as format.
+
+    Example:
+      (digraphel-backend-vertex-as-string
+     :vertex \"X\")"
+    (format string vertex))
+#+end_src
+
+#+begin_src emacs-lisp
+  (digraphel-backend-vertex-as-string :value "X")
+#+end_src
+
+*** pair
+**** p
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;; 
+  (cl-defun digraphel-backend-pair-p (&key object &allow-other-keys)
+    "Return t if OBJECT is a dotted pair (a cons whose cdr is not a proper list)."
+    (and (consp object)
+         (not (proper-list-p object))))
+#+end_src
+
+*** arrow
+**** as-string
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-arrow-as-string
+      (&key pair head tail (string "%s->%s") propagate &allow-other-keys)
+    "Return a string representing a ARROW relationship.
+
+  Alternatively:
+  - Read HEAD and TAILS from PAIR
+
+    Example:
+      (digraphel-backend-arrow-as-string
+     :head \"X\"
+     :tail \"Y\")"
+    (cond
+     (pair (if (digraphel-backend-pair-p :object pair)
+  	      (digraphel-backend-arrow-as-string :head (car pair) :tails (cdr pair) :propagate propagate)
+  	    (error "%s not an pair" pair)))
+     (t
+      (format string head tail))))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-pair-as-string
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (digraphel-backend-pair-as-string
+   :tail "X"
+   :head "Y")
+#+end_src
+
+#+RESULTS:
+: X->Y
+
+*** arrows
+**** as-string
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-arrows-as-string
+      (&key tail heads (sep "; ") propagate &allow-other-keys)
+    "Return a string representing arrows from TAIL to each HEAD in HEADS.
+    Handles empty HEADS by printing the standalone vertex.
+
+    Example:
+    (digraphel-backend-arrows-as-string
+     :tail \"X\"
+     :heads '(\"Y\" \"Z\"))"
+    (if (and heads (listp heads))
+        ;; Normal case: arrows
+        (string-join
+         (cl-loop for head in heads
+                  collect (apply #'digraphel-backend-arrow-as-string
+                                 (append (list :tail tail :head head)
+                                         propagate)))
+         sep)
+      ;; Degenerate case: single vertex
+      (apply #'digraphel-backend-vertex-as-string
+             (append (list :vertex tail)
+                     propagate))))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-arrows-as-string
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (digraphel-backend-arrows-as-string
+   :tail "X"
+   :heads '("Y" "Z"))
+#+end_src
+
+#+RESULTS:
+: X->Y; X->Z
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (digraphel-backend-arrows-as-string
+   :tail "X" :propagate '(:string "(%S)"))
+#+end_src
+
+#+RESULTS:
+: ("X")
+
+*** graph
+**** as-string
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-graph-as-string
+      (&key hash-table (sep "\n") propagate &allow-other-keys)
+    "Return a string representation of all arrows in HASH-TABLE.
+    Each key in HASH-TABLE represents a TAIL whose value is a list of HEADS.
+
+    Arrows for each TAIL are joined by SEP between tails.
+
+    Example:
+    (digraphel-backend-graph-as-string
+     :hash-table digraphel-backend-demo)"
+    (string-join
+     (cl-loop for tail being the hash-keys of hash-table
+              using (hash-values heads)
+              collect (apply #'digraphel-backend-arrows-as-string
+                             (append (list :tail tail :heads heads)
+                                     propagate)))
+     sep))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-graph-as-string
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (digraphel-backend-graph-as-string
+   :hash-table digraphel-backend-demo)
+#+end_src
+
+#+RESULTS:
+: X->Y; X->Z
+: W->X; W->Z
+
+
+#+begin_src emacs-lisp
+  (digraphel-backend-graph-as-string
+   :hash-table 
+#+end_src
+
+*** arglist
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-arglist
+      (&key
+       hash-table
+       (test (if hash-table (hash-table-test hash-table) 'equal))
+       (size (when hash-table (hash-table-size hash-table)))
+       (weakness (when hash-table (hash-table-weakness hash-table)))
+       purecopy
+       &allow-other-keys
+       &aux
+       (__keys '(:test :size :weakness :purecopy))
+       (__values (list test size weakness purecopy)))
+    "Return a hash-table keyword arglist suitable for `make-hash-table`. Unless explicitly provided,
+    TEST SIZE and WEAKNESS are derived from HASH-TABLE."
+    (cl-loop for k in __keys
+             for v in __values
+             when v append (list k v)))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-arglist
+
+#+header: :noweb-ref el-buttercup
+#+begin_src emacs-lisp
+  ;;
+  (describe "digraphel-backend-arglist"
+    (it ":test 'eq"
+      (let ((arglist (digraphel-backend-arglist
+                       :test 'eq)))
+        (expect (plist-get arglist :test)
+                :to-equal 'eq))))
+#+end_src
+
+#+RESULTS:
+: #s(buttercup-suite "digraphel-backend-arglist" nil passed nil nil nil nil (#s(buttercup-spec ":test 'eq" #0 passed nil nil nil nil #[nil ((buttercup-with-converted-ert-signals (let ((arglist (digraphel-backend-arglist :test 'eq))) (expect (plist-get arglist :test) :to-equal 'eq)))) (t)])) nil nil nil nil)
+
+#+begin_src emacs-lisp
+  (plist-get
+   (digraphel-backend-arglist
+    :test 'eq) :test)
+#+end_src
+
+#+RESULTS:
+: eq
+
+#+begin_src emacs-lisp
+  (buttercup-run)
+#+end_src
+
+*** make 
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-make
+      (&key propagate &allow-other-keys
+            &aux (__arglist (apply #'digraphel-backend-arglist propagate)))
+    "Create a new hash table.
+
+      Requirement:
+      (apply #'digraphel-backend-arglist PROPAGATE) is valid.
+
+    Example:
+    (digraphel-backend-make
+    :propagate '(:test eq))
+      "
+    (apply #'make-hash-table __arglist))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-make
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (digraphel-backend-make
+   :propagate '(:test eq))
+#+end_src
+
+*** demo
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defmacro digraphel-backend-demo (&rest body)
+    "Bind a demo for tests."
+    `(let ((ht (digraphel-backend-make))
+  	 (tail-1 "X") (heads-1 '("Y" "Z"))
+  	 (tail-2 "W") (heads-2 '("X" "Y")))
+       (digraphel-backend-put
+        :hash-table ht
+        :adjacency-list (list tail-1 heads-1 tail-2 heads-2))
+       ,@body))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-demo
+
+*** put
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-put
+      (&key hash-table adjacency-list
+    	  &allow-other-keys
+            &aux (__ (unless (hash-table-p hash-table)
+                       (error "❌%S is not a hash-table" hash-table))))
+    "Put ADJACENCY-LIST into HASH-TABLE.
+
+    Requirement:
+    ADJACENCY-LIST A flat list where each tail is followed by a list of heads
+
+    Example:
+    (digraphel-backend-put
+    :hash-table hash-table
+    :adjacency-list  (\"X\" '(\"Y\" \"Z\") \"W\" '(\"X\" \"Y\")))"
+    (cl-loop for (k v) on adjacency-list by #'cddr
+             do (puthash k v hash-table))
+    hash-table)
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-put
+
+#+header: :noweb-ref el-example
+#+begin_src emacs-lisp
+  (let ((ht digraphel-backend-demo))
+    (digraphel-backend-put
+  :hash-table hash-table
+  :adjacency-list  (\"X\" '(\"Y\" \"Z\") \"W\" '(\"X\" \"Y\"))))
+#+end_src
+
+*** vertices
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-vertices
+      (&key
+       hash-table
+       &allow-other-keys
+       &aux
+       (__result
+        (cl-loop for tail being the hash-keys of hash-table
+    	       using (hash-values heads)
+    	       append (cons tail heads))))
+    "Extracts vertices (whether tail or heads) from HASH-TABLE"
+    (delete-dups __result))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-vertices
+
+#+header: :noweb-ref el-buttercup
+#+begin_src emacs-lisp
+  ;;
+  (describe "digraphel-backend-vertices"
+    (digraphel-backend-demo
+     (let ((vertices
+  	  (digraphel-backend-vertices
+  	   :hash-table ht))
+  	 (bench '("W" "X" "Y" "Z")))
+       (it (digraphel-backend-graph-as-string :hash-table ht)
+         (expect (sort vertices) :to-equal (sort bench))))))
+#+end_src
+
+#+RESULTS:
+: #s(buttercup-suite "digraphel-backend-vertices" nil passed nil nil nil nil (#s(buttercup-spec "X->Y; X->Z
+: W->X; W->Y" #0 passed nil nil nil nil #[nil ((condition-case err (let ((buttercup--stackframe-marker 1)) (ignore buttercup--stackframe-marker) (buttercup-expect (let ((temp127 '(sort vertices))) (let ((expr temp127)) (oclosure--fix-type (ignore expr) #'(lambda nil (:documentation 'buttercup--thunk) (if t nil expr) (sort vertices))))) :to-equal (let ((temp128 '(sort bench))) (let ((expr temp128)) (oclosure--fix-type (ignore expr) #'(lambda nil (:documentation 'buttercup--thunk) (if t nil expr) (sort bench))))))) (ert-test-failed (buttercup-fail "%S" err)) (ert-test-skipped (buttercup-skip "Skipping: %S" err)))) ((bench "W" "X" "Y" "Z") (vertices "X" "Y" "Z" "W"))])) nil nil nil nil)
+
+*** indegree
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-indegree
+      (&key
+       hash-table
+       (vertices (digraphel-backend-vertices :hash-table hash-table))
+       &allow-other-keys
+       &aux
+       (__arglist (digraphel-backend-arglist hash-table))
+       (__result (apply #'make-hash-table __arglist)))
+    "Compute the indegree of each tail in HASH-TABLE.
+
+    Keys:
+    - HASH-TABLE represents an adjacency list: keys are vertices, values are lists of heads.
+    - VERTICES contains all vertices (keys and heads)."
+    (cl-loop for tail in vertices
+             do (puthash tail 0 __result))
+    (cl-loop for tail being the hash-keys of hash-table
+             using (hash-values neighbor-list)
+             do (cl-loop for neighbor in neighbor-list
+                         do (puthash neighbor (1+ (gethash neighbor __result)) __result)))
+    __result)
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-indegree
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  (put 'digraphel-backend-indegree :vertex-rank t)
+#+end_src
+
+#+RESULTS:
+: t
+
+#+header: :noweb-ref el-buttercup
+#+begin_src emacs-lisp
+  ;;
+  (describe "digraphel-backend-indegree"
+    (digraphel-backend-demo
+     (let ((in-deg (digraphel-backend-indegree
+  		  :hash-table ht)))
+       (it "W has indegree 0"
+         (expect (gethash "W" in-deg) :to-equal 0))
+       (it "X has indegree 1"
+         (expect (gethash "X" in-deg) :to-equal 1))
+       (it "Y has indegree 2"
+         (expect (gethash "Y" in-deg) :to-equal 2))
+       (it "Z has indegree 1"
+         (expect (gethash "Z" in-deg) :to-equal 1)))))
+#+end_src
+
+*** levels
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-backend-levels
+      (&key hash-table
+    	  &allow-other-keys
+            &aux
+            (__arglist (digraphel-backend-arglist :hash-table hash-table))
+            (__result (apply #'make-hash-table __arglist)))
+    "Return a hash-table mapping each node to its topological level in HASH-TABLE.
+    Nodes with lower levels appear earlier in any valid topological order."
+    (let* ((indegree (digraphel-backend-indegree :hash-table hash-table))
+           (queue nil)
+           (levels (make-hash-table :test 'equal))
+           tail heads new-indeg)
+
+      ;; initialize queue and levels
+      (maphash (lambda (k v)
+                 (puthash k 0 levels)
+                 (when (zerop v)
+                   (push k queue)))
+               indegree)
+
+      ;; process queue
+      (while queue
+        (setq tail (pop queue))
+        (setq heads (or (gethash tail hash-table) nil))
+        (dolist (n heads)
+          ;; update level of neighbor
+          (puthash n (max (gethash n levels 0)
+                          (1+ (gethash tail levels 0)))
+                   levels)
+          ;; decrement indegree
+          (setq new-indeg (1- (gethash n indegree 0)))
+          (puthash n new-indeg indegree)
+          (when (zerop new-indeg)
+            (push n queue))))
+
+      ;; detect cycles (properly)
+      (let ((vertices (digraphel-backend-vertices :hash-table hash-table)))
+        (when (/= (hash-table-count levels) (length vertices))
+          (error "❌Graph contains a cycle")))
+
+      levels))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-levels
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  (put 'digraphel-backend-levels :vertex-rank t)
+#+end_src
+
+#+RESULTS:
+: t
+
+#+header: :noweb-ref el-buttercup
+#+begin_src emacs-lisp
+  ;;
+  (describe "digraphel-backend-levels"
+    (digraphel-backend-demo
+     (let ((levels (digraphel-backend-levels
+  		  :hash-table ht)))
+       (it "level for \"W\" is 0"
+         (expect (gethash "W" levels) :to-equal 0))
+       (it "level for \"X\" is 1"
+         (expect (gethash "X" levels) :to-equal 1))
+       (it "level for \"Y\" is 2"
+         (expect (gethash "Y" levels) :to-equal 2))
+       (it "level for \"Z\" is 2"
+         (expect (gethash "Z" levels) :to-equal 2))
+       )))
+#+end_src
+
+*** frontend
+
+#+header: :noweb-ref el-backend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defmacro digraphel-backend-frontend
+      (&key string &allow-other-keys
+            &aux
+            (__backend (intern (concat "digraphel-backend-" string)))
+            (__frontend (intern (concat "digraphel-" string)))
+            (__docstring (format "Forward to `%s' using the struct's hash-table." __backend)))
+    "Define a frontend DIGRAPHEL-<STRING> forwarding to DIGRAPHEL-BACKEND-<STRING>.
+
+      The generated function accepts keyword arguments, including `:struct'.
+      It extracts the hash-table from STRUCT and forwards all other arguments to the backend."
+    `(cl-defun ,__frontend (&rest rest
+  				&aux (struct (plist-get rest :struct))
+  				(__ (cl-check-type struct digraphel-struct))
+  				(__ht (digraphel-struct-hash-table struct))
+  				(__args (cl-loop for (k v) on rest by #'cddr
+  						 unless (eq k :struct)
+  						 append (list k v))))
+       ,__docstring
+       (apply #',__backend
+              (append (list :hash-table __ht) __args))))
+#+end_src
+
+#+RESULTS:
+: digraphel-backend-frontend
+
+** frontend
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  ;; The frontend consists of a struct that wraps a hash table,
+  ;; along with functions defined on that struct which delegate to the backend.
+#+end_src
+
+*** struct
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defstruct digraphel-graph-struct
+    "The graph structure"
+    hash-table)
+#+end_src
+
+#+RESULTS:
+: digraphel-graph-struct
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defun digraphel-new
+      (&rest rest
+             &aux
+             (__arglist (apply #'digraphel-backend-arglist rest))
+             (__ht (apply #'make-hash-table __arglist))
+             (__struct (make-digraphel-graph-struct)))
+    "Create a DIGRAPHEL-GRAPH-STRUCT with a hash table initialized from REST arguments.
+
+      Requirement:
+      - (apply #'digraphel-backend-arglist REST) must return valid args for `make-hash-table`.
+
+      Example:
+        (digraphel-new :test 'eq)"
+    ;; initialize struct with the new hash-table
+    (setf (digraphel-graph-struct-hash-table __struct) __ht)
+    __struct)
+#+end_src
+
+#+RESULTS:
+: digraphel-new
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  ;;
+  (cl-defstruct digraphel-vertex-rank-struct
+    "Vertex rank struct"
+    hash-table)
+#+end_src
+
+*** function
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  (digraphel-backend-frontend :string "graph-as-string")
+#+end_src
+
+#+RESULTS:
+: digraphel-graph-as-string
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  (digraphel-backend-frontend :string "put")
+#+end_src
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  (digraphel-backend-frontend :string "vertices")
+#+end_src
+
+#+RESULTS:
+: digraphel-vertices
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  (digraphel-backend-frontend :string "indegree")
+#+end_src
+
+#+RESULTS:
+: digraphel-indegree
+
+#+header: :noweb-ref el-frontend
+#+begin_src emacs-lisp
+  (digraphel-backend-frontend :string "levels")
+#+end_src
+
+#+RESULTS:
+: digraphel-levels
+
+** showcase
+
+#+header: :noweb-ref el-showcase
+#+begin_src emacs-lisp
+  ;; Create a struct and store in variable DEMO-STRUCT
+  (defvar demo-struct
+    (digraphel-new))
+#+end_src
+
+#+RESULTS:
+: demo-struct
+
+#+header: :noweb-ref el-showcase
+#+begin_src emacs-lisp
+  ;; Populate DEMO-STRUCT with an adjacency list
+  (let ((adjacency-list '("V" nil "X" ("Y" "Z") "W" ("X" "Y"))))
+     (digraphel-put
+      :struct demo-struct
+      :adjacency-list adjacency-list))
+#+end_src
+
+#+RESULTS:
+: #s(hash-table test equal data ("V" nil "X" ("Y" "Z") "W" ("X" "Y")))
+
+#+header: :noweb-ref el-showcase
+#+begin_src emacs-lisp
+  ;; Convert the graph to a string
+  (message "DEMO-STRUCT as a string:\n%s\n"
+  	 (digraphel-graph-as-string
+  	  :struct demo-struct))
+#+end_src
+
+#+RESULTS:
+: DEMO-STRUCT as a string:
+: V
+: Y->X; Z->X
+: X->W; Y->W
+
+#+header: :noweb-ref el-showcase
+#+begin_src emacs-lisp
+  ;; Extract vertices
+  (message "DEMO-STRUCT's vertices:\n %s\n"
+  	 (digraphel-vertices
+  	  :struct demo-struct))
+#+end_src
+
+#+RESULTS:
+: DEMO-STRUCT’s vertices:
+:  (V X Y Z W)
+
+#+header: :noweb-ref el-showcase
+#+begin_src emacs-lisp
+  ;; Compute indegree
+  (message "DEMO-STRUCT's indegree:\n %s\n"
+  	 (digraphel-indegree
+  	  :struct demo-struct))
+#+end_src
+
+#+RESULTS:
+: DEMO-STRUCT’s indegree:
+:  #s(hash-table test equal data (V 0 X 1 Y 2 Z 1 W 0))
+
+#+header: :noweb-ref el-showcase
+#+begin_src emacs-lisp
+  ;; Compute levels
+  (message "DEMO-STRUCT's levels:\n %s\n"
+  	 (digraphel-levels
+  	  :struct demo-struct))
+#+end_src
+
+#+RESULTS:
+: DEMO-STRUCT’s levels:
+:  #s(hash-table test equal data (V 0 X 1 Y 2 Z 2 W 0))
+
+** tangle
+
+For each subtree, do:
+- ~M-x org-narrow-to-subtree~
+- ~M-x org-babel-tangle~
+- ~M-x widen~
+  
+*** digraphel
+:PROPERTIES:
+:header-args: :tangle ./digraph.el
+:header-args+: :emacs-lisp :lexical t
+:END:
+ 
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  <<el-lexical>>
+  ;; digraphel.el — A directed graph package in Emacs-Lisp
+  ;;
+  <<el-license>>
+  ;;
+  ;; Terminology:
+  <<el-terminology>>
+#+end_src
+
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  ;; <backend>
+  <<el-backend>>
+  ;; </backend>
+#+end_src
+
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  ;; <frontend>
+  <<el-frontend>>
+  ;; </frontend>
+#+end_src
+
+#+RESULTS:
+: digraphel-indegree
+*** showcase
+:PROPERTIES:
+:header-args: :tangle ./showcase.el
+:header-args+: :emacs-lisp :lexical t
+:END:
+
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  ;; showcase.el — A showcase of package digraphel 
+  ;;
+  <<el-license>>
+#+end_src
+
+#+begin_src emacs-lisp
+  (load-file "./digraph.el")
+#+end_src
+
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  <<el-showcase>>
+#+end_src
+*** buttercup
+:PROPERTIES:
+:header-args: :tangle ./buttercup.el
+:header-args+: :emacs-lisp :lexical t
+:END:
+
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  <<el-lexical>>
+  ;; buttercup.el — An buttercup suite for package digraphel 
+  ;;
+  <<el-license>>
+#+end_src
+
+#+begin_src emacs-lisp
+  (load-file "./digraph.el")
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package buttercup
+    :ensure t)
+#+end_src
+
+#+RESULTS:
+
+#+header: :noweb yes
+#+begin_src emacs-lisp
+  <<el-buttercup>>
+#+end_src
+
+** execute
+*** buttercup
+
+~C-c C-c~
+#+header: :tangle no
+#+begin_src emacs-lisp
+  (load-file "./buttercup.el")
+  (buttercup-run)
+#+end_src
+
+#+RESULTS:
+: t
+
+Expected:
+
+=*Buttercup*=
+#+begin_example
+Running 10 specs.
+
+digraphel-backend-arglist
+  :test 'eq (0.30ms)
+
+digraphel-backend-vertices
+  Y->X; Z->X
+X->W; Y->W (0.17ms)
+
+digraphel-backend-indegree
+  W has indegree 0 (0.18ms)
+  X has indegree 1 (0.15ms)
+  Y has indegree 2 (0.16ms)
+  Z has indegree 1 (0.14ms)
+
+digraphel-backend-levels
+  level for "W" is 0 (0.11ms)
+  level for "X" is 1 (0.16ms)
+  level for "Y" is 2 (0.13ms)
+  level for "Z" is 2 (0.13ms)
+
+Ran 10 specs, 0 failed, in 2.42ms.
+#+end_example
+
+*** showcase
+
+~C-c C-c~
+#+header: :tangle no
+#+begin_src emacs-lisp
+  (load-file "./showcase.el")
+#+end_src
+
+#+RESULTS:
+: t
+
+Expected:
+
+=*Messages*=
+#+begin_example
+DEMO-STRUCT as a string:
+V
+Y->X; Z->X
+X->W; Y->W
+
+DEMO-STRUCT’s vertices:
+ (V X Y Z W)
+
+DEMO-STRUCT’s indegree:
+ #s(hash-table test equal data (V 0 X 1 Y 2 Z 1 W 0))
+
+DEMO-STRUCT’s levels:
+ #s(hash-table test equal data (V 0 X 1 Y 2 Z 2 W 0))
+#+end_example
