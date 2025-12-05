@@ -2,7 +2,7 @@
 #author: Erwann Rogard
 #+property: header-args:elisp :lexical t
 
-This is a directed graph package written in Emacs-Lisp.
+This is the package's meta-file.
 
 * el
 ** lexical
