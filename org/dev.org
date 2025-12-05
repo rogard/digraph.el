@@ -1,5 +1,5 @@
 #+title: digraphel
-#author: Erwann Rogard
+#+author: Erwann Rogard
 #+property: header-args:elisp :lexical t
 
 This is the package's meta-file.
