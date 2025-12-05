@@ -29,3 +29,18 @@
 (message "DEMO-STRUCT's levels:\n %s\n"
 	 (digraphel-levels
 	  :struct demo-struct))
+;; *Messages*
+;;
+;; DEMO-STRUCT as a string:
+;; V
+;; Y->X; Z->X
+;; X->W; Y->W
+;; 
+;; DEMO-STRUCT’s vertices:
+;;  (V X Y Z W)
+;; 
+;; DEMO-STRUCT’s indegree:
+;;  #s(hash-table test equal data (V 0 X 1 Y 2 Z 1 W 0))
+;; 
+;; DEMO-STRUCT’s levels:
+;;  #s(hash-table test equal data (V 0 X 1 Y 2 Z 2 W 0))
