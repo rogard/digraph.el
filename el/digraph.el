@@ -17,6 +17,8 @@
 ;; special case VALUE=nil corresponds to an isolated VERTEX.
 ;;
 ;; PROPAGATE is a plist of keyword arguments passed downstream.
+;;
+;; Warning: not in use for now
 (cl-defmacro digraphel-backend-adapt
     (&key
      adaptee-suffix
@@ -216,7 +218,6 @@ Alternatively:
            do (cl-loop for neighbor in neighbor-list
                        do (puthash neighbor (1+ (gethash neighbor __result)) __result)))
   __result)
-(put 'digraphel-backend-indegree :vertex-rank t)
 ;;
 (cl-defun digraphel-backend-levels
     (&key hash-table
@@ -259,7 +260,6 @@ Alternatively:
         (error "❌Graph contains a cycle")))
 
     levels))
-(put 'digraphel-backend-levels :vertex-rank t)
 ;;
 (cl-defmacro digraphel-backend-frontend
     (&key string &allow-other-keys
@@ -273,8 +273,8 @@ Alternatively:
     It extracts the hash-table from STRUCT and forwards all other arguments to the backend."
   `(cl-defun ,__frontend (&rest rest
 				&aux (struct (plist-get rest :struct))
-				(__ (cl-check-type struct digraphel-struct))
-				(__ht (digraphel-struct-hash-table struct))
+				(__ (cl-check-type struct digraphel-graph-struct))
+				(__ht (digraphel-graph-struct-hash-table struct))
 				(__args (cl-loop for (k v) on rest by #'cddr
 						 unless (eq k :struct)
 						 append (list k v))))

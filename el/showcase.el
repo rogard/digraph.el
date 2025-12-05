@@ -3,7 +3,7 @@
 ;; Author: Erwann Rogard
 ;; License: GPL 3.0 (https://www.gnu.org/licenses/gpl-3.0.en.html)
 
-(load-file "./digraph.el")
+(load-file "../el/digraph.el")
 
 ;; Create a struct and store in variable DEMO-STRUCT
 (defvar demo-struct
