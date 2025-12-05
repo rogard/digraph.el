@@ -216,6 +216,7 @@ Alternatively:
            do (cl-loop for neighbor in neighbor-list
                        do (puthash neighbor (1+ (gethash neighbor __result)) __result)))
   __result)
+(put 'digraphel-backend-indegree :vertex-rank t)
 ;;
 (cl-defun digraphel-backend-levels
     (&key hash-table
@@ -258,6 +259,7 @@ Alternatively:
         (error "❌Graph contains a cycle")))
 
     levels))
+(put 'digraphel-backend-levels :vertex-rank t)
 ;;
 (cl-defmacro digraphel-backend-frontend
     (&key string &allow-other-keys
@@ -285,7 +287,7 @@ Alternatively:
 ;; The frontend consists of a struct that wraps a hash table,
 ;; along with functions defined on that struct which delegate to the backend.
 ;;
-(cl-defstruct digraphel-struct
+(cl-defstruct digraphel-graph-struct
   "The graph structure"
   hash-table)
 ;;
@@ -294,8 +296,8 @@ Alternatively:
            &aux
            (__arglist (apply #'digraphel-backend-arglist rest))
            (__ht (apply #'make-hash-table __arglist))
-           (__struct (make-digraphel-struct)))
-  "Create a DIGRAPHEL-STRUCT with a hash table initialized from REST arguments.
+           (__struct (make-digraphel-graph-struct)))
+  "Create a DIGRAPHEL-GRAPH-STRUCT with a hash table initialized from REST arguments.
 
     Requirement:
     - (apply #'digraphel-backend-arglist REST) must return valid args for `make-hash-table`.
@@ -303,8 +305,12 @@ Alternatively:
     Example:
       (digraphel-new :test 'eq)"
   ;; initialize struct with the new hash-table
-  (setf (digraphel-struct-hash-table __struct) __ht)
+  (setf (digraphel-graph-struct-hash-table __struct) __ht)
   __struct)
+;;
+(cl-defstruct digraphel-vertex-rank-struct
+  "Vertex rank struct"
+  hash-table)
 (digraphel-backend-frontend :string "graph-as-string")
 (digraphel-backend-frontend :string "put")
 (digraphel-backend-frontend :string "vertices")

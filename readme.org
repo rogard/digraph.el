@@ -780,7 +780,7 @@ For each subtree, do:
 - ~M-x org-narrow-to-subtree~
 - ~M-x org-babel-tangle~
 - ~M-x widen~
-  
+
 *** digraphel
 :PROPERTIES:
 :header-args: :tangle ./digraph.el
