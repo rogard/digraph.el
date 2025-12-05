@@ -32,7 +32,7 @@ This is a directed graph package written in Emacs-Lisp.
 
 ** backend
 :PROPERTIES:
-:header-args: :tangle ./digraph.el :emacs-lisp :lexical t
+:header-args: :tangle ../el/digraph.el :emacs-lisp :lexical t
 :END:
 
 *** header
@@ -783,7 +783,7 @@ For each subtree, do:
 
 *** digraphel
 :PROPERTIES:
-:header-args: :tangle ./digraph.el
+:header-args: :tangle ../el/digraph.el
 :header-args+: :emacs-lisp :lexical t
 :END:
  
@@ -816,7 +816,7 @@ For each subtree, do:
 : digraphel-indegree
 *** showcase
 :PROPERTIES:
-:header-args: :tangle ./showcase.el
+:header-args: :tangle ../el/showcase.el
 :header-args+: :emacs-lisp :lexical t
 :END:
 
@@ -837,7 +837,7 @@ For each subtree, do:
 #+end_src
 *** buttercup
 :PROPERTIES:
-:header-args: :tangle ./buttercup.el
+:header-args: :tangle ../el/buttercup.el
 :header-args+: :emacs-lisp :lexical t
 :END:
 
